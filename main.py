@@ -28,10 +28,14 @@ def handleIndex(ele,message,msg):
 
 
 # loop thread
-def loopthread(message):
+def loopthread(message,otherss=False):
 
     urls = []
-    for ele in message.text.split():
+    if otherss: texts = message.caption
+    else: texts = message.text
+
+    if texts in [None,""]: return
+    for ele in texts.split():
         if "http://" in ele or "https://" in ele:
             urls.append(ele)
     if len(urls) == 0: return
@@ -57,7 +61,14 @@ def loopthread(message):
             except Exception as e: temp = "**Error**: " + str(e)
         print("bypassed:",temp)
         if temp != None: link = link + temp + "\n\n"
-        
+    
+    if otherss:
+        try:
+            app.send_photo(message.chat.id, message.photo.file_id, f'__{link}__', reply_to_message_id=message.id)
+            app.delete_messages(message.chat.id,[msg.id])
+            return
+        except: pass
+
     try: app.edit_message_text(message.chat.id, msg.id, f'__{link}__', disable_web_page_preview=True)
     except:
         try: app.edit_message_text(message.chat.id, msg.id, "__Failed to Bypass__")
@@ -71,7 +82,10 @@ def loopthread(message):
 @app.on_message(filters.command(["start"]))
 def send_start(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
     app.send_message(message.chat.id, f"__👋 Hi **{message.from_user.mention}**, i am Link Bypasser Bot, just send me any supported links and i will you get you results.\nCheckout /help to Read More__",
-    reply_markup=InlineKeyboardMarkup([[ InlineKeyboardButton("🌐 Source Code", url="https://github.com/bipinkrish/Link-Bypasser-Bot")]]), reply_to_message_id=message.id)
+    reply_markup=InlineKeyboardMarkup([
+        [ InlineKeyboardButton("🌐 Source Code", url="https://github.com/bipinkrish/Link-Bypasser-Bot")],
+        [ InlineKeyboardButton("Replit", url="https://replit.com/@bipinkrish/Link-Bypasser#app.py") ]]), 
+        reply_to_message_id=message.id)
 
 
 # help command
@@ -89,21 +103,28 @@ def receive(client: pyrogram.client.Client, message: pyrogram.types.messages_and
 
 # doc thread
 def docthread(message):
-    if message.document.file_name.endswith("dlc"):
-        msg = app.send_message(message.chat.id, "🔎 __bypassing...__", reply_to_message_id=message.id)
-        print("sent DLC file")
-        sess = requests.session()
-        file = app.download_media(message)
-        dlccont = open(file,"r").read()
-        link = bypasser.getlinks(dlccont,sess)
-        app.edit_message_text(message.chat.id, msg.id, f'__{link}__')
-        os.remove(file)
+    msg = app.send_message(message.chat.id, "🔎 __bypassing...__", reply_to_message_id=message.id)
+    print("sent DLC file")
+    sess = requests.session()
+    file = app.download_media(message)
+    dlccont = open(file,"r").read()
+    link = bypasser.getlinks(dlccont,sess)
+    app.edit_message_text(message.chat.id, msg.id, f'__{link}__')
+    os.remove(file)
 
 
-# doc
-@app.on_message(filters.document)
+# files
+@app.on_message([filters.document,filters.photo,filters.video])
 def docfile(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
-    bypass = threading.Thread(target=lambda:docthread(message),daemon=True)
+    
+    try:
+        if message.document.file_name.endswith("dlc"):
+            bypass = threading.Thread(target=lambda:docthread(message),daemon=True)
+            bypass.start()
+            return
+    except: pass
+
+    bypass = threading.Thread(target=lambda:loopthread(message,True),daemon=True)
     bypass.start()
 
 
