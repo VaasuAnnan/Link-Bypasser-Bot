@@ -1,21 +1,24 @@
 import pyrogram
-from pyrogram import Client
-from pyrogram import filters
+from pyrogram import Client,filters
 from pyrogram.types import InlineKeyboardMarkup,InlineKeyboardButton
-import bypasser
-import os
-import ddl
-import requests
-import threading
+from os import environ, remove
+from threading import Thread
+from json import load
+from re import search
+
 from texts import HELP_TEXT
-from ddl import ddllist
-import re
+import bypasser
+from ddl import ddllist, direct_link_generator
+from time import time
 
 
 # bot
-bot_token = os.environ.get("TOKEN", "")
-api_hash = os.environ.get("HASH", "") 
-api_id = os.environ.get("ID", "")
+with open('config.json', 'r') as f: DATA = load(f)
+def getenv(var): return environ.get(var) or DATA.get(var, None)
+
+bot_token = getenv("TOKEN")
+api_hash = getenv("HASH") 
+api_id = getenv("ID")
 app = Client("my_bot",api_id=api_id, api_hash=api_hash,bot_token=bot_token)  
 
 
@@ -43,39 +46,54 @@ def loopthread(message,otherss=False):
     if bypasser.ispresent(ddllist,urls[0]):
         msg = app.send_message(message.chat.id, "⚡ __generating...__", reply_to_message_id=message.id)
     else:
-        if urls[0] in "https://olamovies" or urls[0] in "https://psa.pm/":
+        if "https://olamovies" in urls[0] or "https://psa.wf/" in urls[0]:
             msg = app.send_message(message.chat.id, "🔎 __this might take some time...__", reply_to_message_id=message.id)
         else:
             msg = app.send_message(message.chat.id, "🔎 __bypassing...__", reply_to_message_id=message.id)
 
-    link = ""
+    strt = time()
+    links = ""
     for ele in urls:
-        if re.search(r"https?:\/\/(?:[\w.-]+)?\.\w+\/\d+:", ele):
+        if search(r"https?:\/\/(?:[\w.-]+)?\.\w+\/\d+:", ele):
             handleIndex(ele,message,msg)
             return
         elif bypasser.ispresent(ddllist,ele):
-            try: temp = ddl.direct_link_generator(ele)
+            try: temp = direct_link_generator(ele)
             except Exception as e: temp = "**Error**: " + str(e)
         else:    
             try: temp = bypasser.shortners(ele)
             except Exception as e: temp = "**Error**: " + str(e)
         print("bypassed:",temp)
-        if temp != None: link = link + temp + "\n\n"
-    
+        if temp != None: links = links + temp + "\n"
+    end = time()
+    print("Took " + "{:.2f}".format(end-strt) + "sec")
+
     if otherss:
         try:
-            app.send_photo(message.chat.id, message.photo.file_id, f'__{link}__', reply_to_message_id=message.id)
+            app.send_photo(message.chat.id, message.photo.file_id, f'__{links}__', reply_to_message_id=message.id)
             app.delete_messages(message.chat.id,[msg.id])
             return
         except: pass
 
-    try: app.edit_message_text(message.chat.id, msg.id, f'__{link}__', disable_web_page_preview=True)
-    except:
-        try: app.edit_message_text(message.chat.id, msg.id, "__Failed to Bypass__")
+    try: 
+        final = []
+        tmp = ""
+        for ele in links.split("\n"):
+            tmp += ele + "\n"
+            if len(tmp) > 4000:
+                final.append(tmp)
+                tmp = ""
+        final.append(tmp)
+        app.delete_messages(message.chat.id, msg.id)
+        tmsgid = message.id
+        for ele in final:
+            tmsg = app.send_message(message.chat.id, f'__{ele}__',reply_to_message_id=tmsgid, disable_web_page_preview=True)
+            tmsgid = tmsg.id
+    except Exception as e:
+        print(e)
+        try: app.send_message(message.chat.id, "__Failed to Bypass__", reply_to_message_id=message.id)
         except:
-            try: app.delete_messages(message.chat.id, msg.id)
-            except: pass
-            app.send_message(message.chat.id, "__Failed to Bypass__")
+            app.send_message(message.chat.id, "__Failed to Bypass__", reply_to_message_id=message.id)
 
 
 # start command
@@ -97,7 +115,7 @@ def send_help(client: pyrogram.client.Client, message: pyrogram.types.messages_a
 # links
 @app.on_message(filters.text)
 def receive(client: pyrogram.client.Client, message: pyrogram.types.messages_and_media.message.Message):
-    bypass = threading.Thread(target=lambda:loopthread(message),daemon=True)
+    bypass = Thread(target=lambda:loopthread(message),daemon=True)
     bypass.start()
 
 
@@ -105,12 +123,11 @@ def receive(client: pyrogram.client.Client, message: pyrogram.types.messages_and
 def docthread(message):
     msg = app.send_message(message.chat.id, "🔎 __bypassing...__", reply_to_message_id=message.id)
     print("sent DLC file")
-    sess = requests.session()
     file = app.download_media(message)
     dlccont = open(file,"r").read()
-    link = bypasser.getlinks(dlccont,sess)
-    app.edit_message_text(message.chat.id, msg.id, f'__{link}__')
-    os.remove(file)
+    links = bypasser.getlinks(dlccont)
+    app.edit_message_text(message.chat.id, msg.id, f'__{links}__', disable_web_page_preview=True)
+    remove(file)
 
 
 # files
@@ -119,12 +136,12 @@ def docfile(client: pyrogram.client.Client, message: pyrogram.types.messages_and
     
     try:
         if message.document.file_name.endswith("dlc"):
-            bypass = threading.Thread(target=lambda:docthread(message),daemon=True)
+            bypass = Thread(target=lambda:docthread(message),daemon=True)
             bypass.start()
             return
     except: pass
 
-    bypass = threading.Thread(target=lambda:loopthread(message,True),daemon=True)
+    bypass = Thread(target=lambda:loopthread(message,True),daemon=True)
     bypass.start()
 
 
